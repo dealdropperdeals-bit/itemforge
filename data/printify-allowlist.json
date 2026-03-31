@@ -1,0 +1,24 @@
+[
+  {
+    "slug": "printify-iphone-16-pro-clear-case",
+    "title": "iPhone 16 Pro Clear Case",
+    "blueprintId": 9,
+    "printProviderId": 99,
+    "variantId": 999,
+    "widthPx": 1800,
+    "heightPx": 3200,
+    "dpi": 300,
+    "marketplaceStatus": "CANDIDATE",
+    "targetMarginPct": 52,
+    "safeAreaJson": {
+      "insetTopPct": 0.06,
+      "insetBottomPct": 0.08,
+      "insetLeftPct": 0.05,
+      "insetRightPct": 0.05
+    },
+    "parametersJson": {
+      "family": "clear-case",
+      "surface": "full-wrap"
+    }
+  }
+]

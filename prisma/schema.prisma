@@ -1,0 +1,356 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum BillingProvider {
+  PAYPAL
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum PlanInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum ProviderKind {
+  PRINTIFY
+}
+
+enum AmazonListingStatus {
+  CANDIDATE
+  SAFE
+  BLOCKED
+}
+
+enum DesignStatus {
+  DRAFT
+  READY
+  EXPORTED
+  FAILED
+}
+
+enum ExportKind {
+  PRINT_FILE
+  PREVIEW
+  ZIP
+  METADATA
+}
+
+enum PrintifyProductStatus {
+  DRAFT
+  CREATED
+  FAILED
+}
+
+enum WebhookProvider {
+  PAYPAL
+}
+
+enum CreditLedgerKind {
+  MONTHLY_ALLOCATION
+  CREDIT_PACK_PURCHASE
+  AI_GENERATION
+  SPEC_GENERATION
+  CROSSPOST
+  MANUAL_ADJUSTMENT
+}
+
+enum JobSpecStatus {
+  DRAFT
+  HANDED_OFF
+  RETURNED
+  COMPLETED
+}
+
+enum CreditPackPurchaseStatus {
+  CREATED
+  APPROVED
+  COMPLETED
+  CANCELED
+  FAILED
+}
+
+model User {
+  id                 String               @id @default(cuid())
+  name               String?
+  email              String               @unique
+  emailVerified      DateTime?
+  image              String?
+  passwordHash       String?
+  role               UserRole             @default(USER)
+  status             UserStatus           @default(PENDING)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  accounts           Account[]
+  sessions           Session[]
+  subscriptions      UserSubscription[]
+  designs            Design[]
+  aiUsageEvents      AiUsageEvent[]
+  printifyItems      PrintifyProduct[]
+  printifyConnection PrintifyConnection?
+  creditLedger       CreditLedgerEntry[]
+  jobSpecs           JobSpec[]
+  creditPackPurchases CreditPackPurchase[]
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionToken])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model SubscriptionPlan {
+  id                String             @id @default(cuid())
+  code              String             @unique
+  name              String
+  provider          BillingProvider
+  providerPlanId    String             @unique
+  interval          PlanInterval
+  amountCents       Int
+  currency          String             @default("USD")
+  aiEnabled         Boolean            @default(false)
+  monthlyAiTokenCap Int?
+  includedCredits   Int                @default(0)
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  subscriptions     UserSubscription[]
+}
+
+model UserSubscription {
+  id                     String             @id @default(cuid())
+  userId                 String
+  planId                 String
+  provider               BillingProvider
+  providerSubscriptionId String             @unique
+  providerPayerId        String?
+  status                 SubscriptionStatus @default(INCOMPLETE)
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  canceledAt             DateTime?
+  activatedAt            DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  plan                   SubscriptionPlan   @relation(fields: [planId], references: [id], onDelete: Restrict)
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DeviceProfile {
+  id                 String              @id @default(cuid())
+  slug               String              @unique
+  title              String
+  provider           ProviderKind
+  blueprintId        Int
+  printProviderId    Int
+  variantId          Int
+  widthPx            Int
+  heightPx           Int
+  dpi                Int
+  safeAreaJson       Json
+  marketplaceStatus  AmazonListingStatus @default(CANDIDATE)
+  baseCostCents      Int?
+  suggestedPriceCents Int?
+  targetMarginPct    Int?
+  parametersJson     Json?
+  syncedAt           DateTime?
+  enabled            Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  designs            Design[]
+}
+
+model Design {
+  id               String        @id @default(cuid())
+  userId           String
+  deviceProfileId  String
+  title            String
+  status           DesignStatus  @default(DRAFT)
+  originalPath     String
+  preparedPath     String?
+  previewPath      String?
+  notes            String?
+  metadataJson     Json?
+  exportedAt       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  deviceProfile    DeviceProfile @relation(fields: [deviceProfileId], references: [id], onDelete: Restrict)
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exports          DesignExport[]
+  printifyProducts PrintifyProduct[]
+}
+
+model DesignExport {
+  id        String     @id @default(cuid())
+  designId  String
+  kind      ExportKind
+  path      String
+  createdAt DateTime   @default(now())
+  design    Design     @relation(fields: [designId], references: [id], onDelete: Cascade)
+}
+
+model PrintifyProduct {
+  id             String                @id @default(cuid())
+  userId         String
+  designId       String
+  provider       ProviderKind          @default(PRINTIFY)
+  productId      String?
+  externalHandle String?
+  status         PrintifyProductStatus @default(DRAFT)
+  payloadJson    Json?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  design         Design                @relation(fields: [designId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AiUsageEvent {
+  id            String   @id @default(cuid())
+  userId        String
+  model         String
+  operation     String
+  inputTokens   Int      @default(0)
+  outputTokens  Int      @default(0)
+  estimatedCost Decimal? @db.Decimal(10, 4)
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PrintifyConnection {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  apiTokenEncrypted String
+  shopId            String
+  shopName          String?
+  lastValidatedAt   DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CreditPack {
+  id                String   @id @default(cuid())
+  code              String   @unique
+  name              String
+  credits           Int
+  amountCents       Int
+  currency          String   @default("USD")
+  providerProductId String?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  purchases         CreditPackPurchase[]
+}
+
+model CreditPackPurchase {
+  id              String                   @id @default(cuid())
+  userId          String
+  creditPackId    String
+  providerOrderId String                   @unique
+  status          CreditPackPurchaseStatus @default(CREATED)
+  credits         Int
+  amountCents     Int
+  captureId       String?
+  capturedAt      DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  creditPack      CreditPack               @relation(fields: [creditPackId], references: [id], onDelete: Restrict)
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CreditLedgerEntry {
+  id           String           @id @default(cuid())
+  userId       String
+  delta        Int
+  kind         CreditLedgerKind
+  description  String
+  referenceKey String?          @unique
+  metadataJson Json?
+  createdAt    DateTime         @default(now())
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model JobSpec {
+  id            String        @id @default(cuid())
+  userId        String
+  designId      String?
+  title         String
+  prompt        String
+  specJson      Json
+  status        JobSpecStatus @default(DRAFT)
+  workstationId String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WebhookEvent {
+  id          String          @id @default(cuid())
+  provider    WebhookProvider
+  externalId  String?
+  eventType   String
+  headersJson Json
+  payloadJson Json
+  processedAt DateTime?
+  createdAt   DateTime        @default(now())
+
+  @@index([provider, eventType])
+}
