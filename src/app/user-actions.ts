@@ -10,6 +10,7 @@ import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { listPrintifyShops } from "@/lib/printify";
+import { resolveEntitlements } from "@/lib/entitlements";
 
 function getField(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
@@ -78,6 +79,22 @@ export async function createDesign(formData: FormData) {
     redirect("/sign-in");
   }
 
+  const subscription = await prisma.userSubscription.findFirst({
+    where: {
+      userId: session.user.id,
+    },
+    include: {
+      plan: true,
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+  });
+  const entitlements = resolveEntitlements(subscription);
+  if (!entitlements.canAccessApp) {
+    redirect("/dashboard?error=An%20active%20subscription%20is%20required%20to%20create%20designs");
+  }
+
   const title = getField(formData, "title");
   const deviceProfileId = getField(formData, "deviceProfileId");
   const file = formData.get("artwork");
@@ -108,6 +125,22 @@ export async function prepareDesign(formData: FormData) {
     redirect("/sign-in");
   }
 
+  const subscription = await prisma.userSubscription.findFirst({
+    where: {
+      userId: session.user.id,
+    },
+    include: {
+      plan: true,
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+  });
+  const entitlements = resolveEntitlements(subscription);
+  if (!entitlements.canAccessApp) {
+    redirect("/dashboard?error=An%20active%20subscription%20is%20required%20to%20publish%20designs");
+  }
+
   const designId = getField(formData, "designId");
 
   if (!designId) {
@@ -128,6 +161,22 @@ export async function savePrintifyConnection(formData: FormData) {
 
   if (!session?.user?.id) {
     redirect("/sign-in");
+  }
+
+  const subscription = await prisma.userSubscription.findFirst({
+    where: {
+      userId: session.user.id,
+    },
+    include: {
+      plan: true,
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+  });
+  const entitlements = resolveEntitlements(subscription);
+  if (!entitlements.canAccessApp) {
+    redirect("/dashboard?error=An%20active%20subscription%20is%20required%20to%20connect%20Printify");
   }
 
   const apiToken = getField(formData, "apiToken");

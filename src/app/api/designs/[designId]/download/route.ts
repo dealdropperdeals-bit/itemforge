@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { getOwnedExportPath } from "@/lib/designs";
+import { prisma } from "@/lib/db";
+import { resolveEntitlements } from "@/lib/entitlements";
 
 type Props = {
   params: Promise<{ designId: string }>;
@@ -39,6 +41,22 @@ export async function GET(request: Request, { params }: Props) {
 
   if (!session?.user?.id) {
     return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  const subscription = await prisma.userSubscription.findFirst({
+    where: {
+      userId: session.user.id,
+    },
+    include: {
+      plan: true,
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+  });
+  const entitlements = resolveEntitlements(subscription);
+  if (!entitlements.canAccessApp) {
+    return new NextResponse("An active membership is required", { status: 403 });
   }
 
   const { designId } = await params;

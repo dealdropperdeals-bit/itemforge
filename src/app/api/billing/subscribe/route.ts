@@ -4,6 +4,7 @@ import { BillingProvider } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { createPaypalSubscription } from "@/lib/paypal";
+import { getResolvedLaunchSettings } from "@/lib/runtime-settings";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -28,11 +29,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "PayPal plan is not configured" }, { status: 500 });
   }
 
+  const settings = await getResolvedLaunchSettings();
   const subscription = await createPaypalSubscription({
     planId: plan.providerPlanId,
     customId: session.user.id,
-    returnUrl: `${process.env.APP_URL || "http://localhost:3000"}/billing/success`,
-    cancelUrl: `${process.env.APP_URL || "http://localhost:3000"}/billing/cancel`,
+    returnUrl: `${settings.appUrl}/billing/success`,
+    cancelUrl: `${settings.appUrl}/billing/cancel`,
   });
 
   if (subscription?.id) {

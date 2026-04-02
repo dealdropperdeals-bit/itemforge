@@ -12,7 +12,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
-    "sync:printify": "tsx scripts/sync-printify-catalog.ts"
+    "sync:printify": "tsx scripts/sync-printify-catalog.ts",
+    "sync:printify:allowlist": "PRINTIFY_FULL_CATALOG_SYNC=0 tsx scripts/sync-printify-catalog.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",

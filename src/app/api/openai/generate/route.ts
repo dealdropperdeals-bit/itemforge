@@ -5,6 +5,7 @@ import { addCreditLedgerEntry, getCreditBalance } from "@/lib/credits";
 import { prisma } from "@/lib/db";
 import { resolveEntitlements } from "@/lib/entitlements";
 import { getOpenAiClient } from "@/lib/openai";
+import { getResolvedLaunchSettings } from "@/lib/runtime-settings";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -50,9 +51,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Credit balance too low" }, { status: 402 });
   }
 
-  const client = getOpenAiClient();
+  const settings = await getResolvedLaunchSettings();
+  const client = await getOpenAiClient();
   const response = await client.responses.create({
-    model: process.env.OPENAI_MODEL || "gpt-5.1",
+    model: settings.openAiModel,
     input: body.prompt,
   });
 

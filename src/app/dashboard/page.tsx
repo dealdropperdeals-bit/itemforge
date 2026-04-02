@@ -10,6 +10,7 @@ import { SubscribeButton } from "@/app/dashboard/subscribe-button";
 import { createDesign, logoutUser, prepareDesign, savePrintifyConnection } from "@/app/user-actions";
 import { getCreditBalance } from "@/lib/credits";
 import { prisma } from "@/lib/db";
+import { resolveEntitlements } from "@/lib/entitlements";
 import { readStorageFile } from "@/lib/storage";
 
 type Props = {
@@ -89,6 +90,14 @@ function formatCurrency(cents?: number | null) {
   }).format(cents / 100);
 }
 
+function formatPercent(value?: number | null) {
+  if (typeof value !== "number") {
+    return "N/A";
+  }
+
+  return `${value.toFixed(1)}%`;
+}
+
 function formatShortDate(date: Date) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -148,6 +157,60 @@ function getCaseFamily(input: { title: string; parametersJson: Prisma.JsonValue 
   }
 
   return "standard-case";
+}
+
+function getDeviceParameter(design: DesignRecord, key: string) {
+  const payload = design.deviceProfile.parametersJson;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return "";
+  }
+
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : "";
+}
+
+function getChannelPricing(design: DesignRecord, channel: "amazon" | "etsy" | "ebay") {
+  const payload = design.deviceProfile.parametersJson;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const pricingPayload = (payload as Record<string, unknown>).channelPricing;
+  if (!pricingPayload || typeof pricingPayload !== "object" || Array.isArray(pricingPayload)) {
+    return null;
+  }
+
+  const channelPayload = (pricingPayload as Record<string, unknown>)[channel];
+  if (!channelPayload || typeof channelPayload !== "object" || Array.isArray(channelPayload)) {
+    return null;
+  }
+
+  const typed = channelPayload as Record<string, unknown>;
+  const priceCents = typeof typed.priceCents === "number" ? typed.priceCents : null;
+  const feesCents = typeof typed.feesCents === "number" ? typed.feesCents : null;
+  const profitCents = typeof typed.profitCents === "number" ? typed.profitCents : null;
+  const marginPct = typeof typed.marginPct === "number" ? typed.marginPct : null;
+
+  if (priceCents === null || feesCents === null || profitCents === null || marginPct === null) {
+    return null;
+  }
+
+  return {
+    priceCents,
+    feesCents,
+    profitCents,
+    marginPct,
+  };
+}
+
+function getSourcingMeta(design: DesignRecord) {
+  return {
+    manufacturer: getDeviceParameter(design, "manufacturer") || "Unknown",
+    caseModel: getDeviceParameter(design, "caseModel") || slugToLabel(getCaseFamily(design.deviceProfile)),
+    phoneModel: getDeviceParameter(design, "phoneModel") || design.deviceProfile.title,
+    blueprintTitle: getDeviceParameter(design, "blueprintTitle") || "Unknown blueprint",
+    printProviderTitle: getDeviceParameter(design, "printProviderTitle") || "Unknown provider",
+  };
 }
 
 function getWorkflowState(design: DesignRecord) {
@@ -539,6 +602,8 @@ export default async function DashboardPage({ searchParams }: Props) {
   }
 
   const latestSubscription = user.subscriptions[0] || null;
+  const entitlements = resolveEntitlements(latestSubscription || null);
+  const canUsePaidFeatures = entitlements.canAccessApp;
   const query = getSingleValue(params.q)?.trim() || "";
   const view = getSingleValue(params.view) === "completed" ? "completed" : "active";
   const selectedCaseType = getSingleValue(params.caseType) || "all";
@@ -676,6 +741,12 @@ export default async function DashboardPage({ searchParams }: Props) {
                 <span className="font-medium text-white">{latestSubscription?.plan.name || "None"}</span>
               </div>
               <div className="flex items-center justify-between">
+                <span className="text-[var(--muted)]">Access</span>
+                <span className={`font-medium ${canUsePaidFeatures ? "text-emerald-200" : "text-amber-200"}`}>
+                  {canUsePaidFeatures ? "Unlocked" : "Paywall active"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
                 <span className="text-[var(--muted)]">Credits</span>
                 <span className="font-medium text-white">{creditBalance}</span>
               </div>
@@ -686,6 +757,11 @@ export default async function DashboardPage({ searchParams }: Props) {
                 </span>
               </div>
             </div>
+            {user.role === "ADMIN" ? (
+              <Link href="/admin/launch-settings" className="secondary-action w-full justify-center">
+                Launch settings
+              </Link>
+            ) : null}
           </div>
 
           <div className="mt-auto space-y-4">
@@ -789,7 +865,7 @@ export default async function DashboardPage({ searchParams }: Props) {
             </Link>
             <form action={prepareDesign}>
               <input type="hidden" name="designId" value={selectedDesign?.id || ""} />
-              <button type="submit" disabled={!selectedDesign} className="primary-action">
+              <button type="submit" disabled={!selectedDesign || !canUsePaidFeatures} className="primary-action">
                 Publish
               </button>
             </form>
@@ -834,6 +910,11 @@ export default async function DashboardPage({ searchParams }: Props) {
             </div>
           </div>
 
+          {!canUsePaidFeatures ? (
+            <div className="border-b border-amber-500/35 bg-[linear-gradient(90deg,rgba(245,158,11,0.2),rgba(15,23,42,0))] px-6 py-3 text-sm text-amber-100">
+              Paywall is active. Start a subscription below to unlock uploads, exports, AI, and Printify.
+            </div>
+          ) : null}
           {notice ? (
             <div className="border-b border-[var(--divider)] bg-[linear-gradient(90deg,rgba(56,189,248,0.12),rgba(15,23,42,0))] px-6 py-3 text-sm text-sky-100">
               {notice}
@@ -927,9 +1008,16 @@ export default async function DashboardPage({ searchParams }: Props) {
                   type="text"
                   placeholder="Design title"
                   className="field-dark md:col-span-2"
+                  disabled={!canUsePaidFeatures}
                   required
                 />
-                <select name="deviceProfileId" className="field-dark" defaultValue="" required>
+                <select
+                  name="deviceProfileId"
+                  className="field-dark"
+                  defaultValue=""
+                  disabled={!canUsePaidFeatures}
+                  required
+                >
                   <option disabled value="">
                     Choose a device profile
                   </option>
@@ -944,12 +1032,22 @@ export default async function DashboardPage({ searchParams }: Props) {
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   className="field-dark file:mr-4 file:rounded-full file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-[var(--foreground)] hover:file:bg-white/15"
+                  disabled={!canUsePaidFeatures}
                   required
                 />
-                <button type="submit" className="primary-action justify-center md:col-span-2">
+                <button
+                  type="submit"
+                  disabled={!canUsePaidFeatures}
+                  className="primary-action justify-center md:col-span-2"
+                >
                   Upload source artwork
                 </button>
               </form>
+              {!canUsePaidFeatures ? (
+                <p className="text-sm leading-7 text-amber-200">
+                  An active subscription is required to upload, export, and publish designs.
+                </p>
+              ) : null}
               <p className="text-sm leading-7 text-[var(--muted)]">
                 The server still generates the same curated print PNG, preview JPG, metadata JSON, and ZIP bundle. This workspace just frames that pipeline as a tighter production flow.
               </p>
@@ -986,6 +1084,11 @@ export default async function DashboardPage({ searchParams }: Props) {
                 <p className="text-[11px] uppercase tracking-[0.3em] text-[var(--muted)]">Commerce</p>
                 <h2 className="mt-2 text-lg font-semibold text-white">Plans and credit packs</h2>
               </div>
+              {!canUsePaidFeatures ? (
+                <p className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                  Subscription inactive. Start a plan to unlock uploads, exports, AI, and Printify actions.
+                </p>
+              ) : null}
               <div className="space-y-4">
                 {plans.map((plan) => (
                   <div key={plan.id} className="border-b border-[var(--divider)] pb-4 last:border-b-0 last:pb-0">
@@ -1004,6 +1107,9 @@ export default async function DashboardPage({ searchParams }: Props) {
                     />
                   </div>
                 ))}
+                {canUsePaidFeatures ? (
+                  <p className="text-xs text-emerald-200">Need more usage? Top up with credit packs below.</p>
+                ) : null}
                 {creditPacks.map((pack) => (
                   <div key={pack.id} className="border-b border-[var(--divider)] pb-4 last:border-b-0 last:pb-0">
                     <div className="mb-3 flex items-start justify-between gap-4">
@@ -1080,25 +1186,114 @@ export default async function DashboardPage({ searchParams }: Props) {
                   <p className="text-[11px] uppercase tracking-[0.3em] text-[var(--muted)]">Exports</p>
                   <form action={prepareDesign}>
                     <input type="hidden" name="designId" value={selectedDesign.id} />
-                    <button type="submit" className="secondary-action">
+                    <button type="submit" disabled={!canUsePaidFeatures} className="secondary-action">
                       Prepare exports
                     </button>
                   </form>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {selectedDesign.exports.length > 0 ? (
-                    selectedDesign.exports.map((exportItem) => (
-                      <Link
-                        key={exportItem.id}
-                        href={`/api/designs/${selectedDesign.id}/download?kind=${exportItem.kind}`}
-                        className="download-pill"
-                      >
-                        {DOWNLOAD_LABELS[exportItem.kind as ExportKind]}
-                      </Link>
-                    ))
+                    selectedDesign.exports.map((exportItem) =>
+                      canUsePaidFeatures ? (
+                        <Link
+                          key={exportItem.id}
+                          href={`/api/designs/${selectedDesign.id}/download?kind=${exportItem.kind}`}
+                          className="download-pill"
+                        >
+                          {DOWNLOAD_LABELS[exportItem.kind as ExportKind]}
+                        </Link>
+                      ) : (
+                        <span key={exportItem.id} className="download-pill opacity-60">
+                          {DOWNLOAD_LABELS[exportItem.kind as ExportKind]}
+                        </span>
+                      ),
+                    )
                   ) : (
                     <span className="text-sm text-[var(--muted)]">No exports generated yet.</span>
                   )}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedDesign ? (
+              <div className="space-y-4 border-t border-[var(--divider)] pt-5">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-[var(--muted)]">Sourcing</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {(() => {
+                    const sourcing = getSourcingMeta(selectedDesign);
+                    return (
+                      <>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Manufacturer</p>
+                          <p className="mt-1 text-slate-100">{slugToLabel(sourcing.manufacturer)}</p>
+                        </div>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Case model</p>
+                          <p className="mt-1 text-slate-100">{slugToLabel(sourcing.caseModel)}</p>
+                        </div>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Phone model</p>
+                          <p className="mt-1 text-slate-100">{slugToLabel(sourcing.phoneModel)}</p>
+                        </div>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Base cost</p>
+                          <p className="mt-1 text-slate-100">{formatCurrency(selectedDesign.deviceProfile.baseCostCents)}</p>
+                        </div>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Blueprint</p>
+                          <p className="mt-1 text-slate-100">{sourcing.blueprintTitle}</p>
+                        </div>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Print provider</p>
+                          <p className="mt-1 text-slate-100">{sourcing.printProviderTitle}</p>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedDesign ? (
+              <div className="space-y-4 border-t border-[var(--divider)] pt-5">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-[var(--muted)]">Marketplace pricing</p>
+                <div className="space-y-2">
+                  {(["amazon", "etsy", "ebay"] as const).map((channel) => {
+                    const channelPricing = getChannelPricing(selectedDesign, channel);
+                    return (
+                      <div
+                        key={channel}
+                        className="rounded-xl border border-[var(--divider)] bg-[rgba(255,255,255,0.02)] px-3 py-3 text-sm"
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="font-medium text-slate-100">{slugToLabel(channel)}</p>
+                          <p className="text-slate-200">
+                            {channelPricing ? formatCurrency(channelPricing.priceCents) : "N/A"}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs text-[var(--muted)]">
+                          <div>
+                            <p>Fees</p>
+                            <p className="mt-1 text-slate-200">
+                              {channelPricing ? formatCurrency(channelPricing.feesCents) : "N/A"}
+                            </p>
+                          </div>
+                          <div>
+                            <p>Profit</p>
+                            <p className="mt-1 text-slate-200">
+                              {channelPricing ? formatCurrency(channelPricing.profitCents) : "N/A"}
+                            </p>
+                          </div>
+                          <div>
+                            <p>Margin</p>
+                            <p className="mt-1 text-slate-200">
+                              {channelPricing ? formatPercent(channelPricing.marginPct) : "N/A"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ) : null}
@@ -1119,6 +1314,7 @@ export default async function DashboardPage({ searchParams }: Props) {
                   type="password"
                   placeholder="Printify personal access token"
                   className="field-dark"
+                  disabled={!canUsePaidFeatures}
                   required
                 />
                 <input
@@ -1127,9 +1323,14 @@ export default async function DashboardPage({ searchParams }: Props) {
                   placeholder="Printify shop ID"
                   defaultValue={user.printifyConnection?.shopId || ""}
                   className="field-dark"
+                  disabled={!canUsePaidFeatures}
                   required
                 />
-                <button type="submit" className="primary-action w-full justify-center">
+                <button
+                  type="submit"
+                  disabled={!canUsePaidFeatures}
+                  className="primary-action w-full justify-center"
+                >
                   Save and validate Printify
                 </button>
               </form>

@@ -10,10 +10,11 @@ Start with:
 4. Run `npm run db:generate`
 5. Run `npm run db:push`
 6. Run `npm run db:seed`
-7. Run `npm run sync:printify`
-8. Set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`
-9. Run `npm run bootstrap:admin`
-10. Run `npm run dev`
+7. Run `npm run sync:printify` (full phone-case catalog sync: manufacturers, case models, phone models, costs, marketplace pricing)
+8. Optional: run `npm run sync:printify:allowlist` for curated-only sync mode
+9. Set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`
+10. Run `npm run bootstrap:admin`
+11. Run `npm run dev`
 
 Primary launch runbook:
 
