@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { createPaypalOrder } from "@/lib/paypal";
+import { getResolvedLaunchSettings } from "@/lib/runtime-settings";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -25,7 +26,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Credit pack not found" }, { status: 404 });
   }
 
-  const baseUrl = process.env.APP_URL || "http://localhost:3000";
+  const settings = await getResolvedLaunchSettings();
+  const baseUrl = settings.appUrl;
   const order = await createPaypalOrder({
     referenceId: pack.code,
     customId: session.user.id,

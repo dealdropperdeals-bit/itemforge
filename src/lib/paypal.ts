@@ -1,7 +1,8 @@
 import { env } from "@/lib/env";
+import { getResolvedLaunchSettings } from "@/lib/runtime-settings";
 
-const PAYPAL_BASE_URL =
-  env.paypalEnv === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+const PAYPAL_LIVE_BASE_URL = "https://api-m.paypal.com";
+const PAYPAL_SANDBOX_BASE_URL = "https://api-m.sandbox.paypal.com";
 
 type CreateSubscriptionInput = {
   planId: string;
@@ -20,11 +21,18 @@ type CreateOrderInput = {
 };
 
 async function getPayPalAccessToken() {
+  const settings = await getResolvedLaunchSettings();
+  const baseUrl = settings.paypalEnv === "live" ? PAYPAL_LIVE_BASE_URL : PAYPAL_SANDBOX_BASE_URL;
+
+  if (!settings.paypalClientId || !settings.paypalClientSecret) {
+    throw new Error("PayPal client credentials are not configured.");
+  }
+
   const credentials = Buffer.from(
-    `${env.paypalClientId()}:${env.paypalClientSecret()}`,
+    `${settings.paypalClientId}:${settings.paypalClientSecret}`,
   ).toString("base64");
 
-  const response = await fetch(`${PAYPAL_BASE_URL}/v1/oauth2/token`, {
+  const response = await fetch(`${baseUrl}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -43,9 +51,11 @@ async function getPayPalAccessToken() {
 }
 
 export async function createPaypalSubscription(input: CreateSubscriptionInput) {
+  const settings = await getResolvedLaunchSettings();
+  const baseUrl = settings.paypalEnv === "live" ? PAYPAL_LIVE_BASE_URL : PAYPAL_SANDBOX_BASE_URL;
   const accessToken = await getPayPalAccessToken();
 
-  const response = await fetch(`${PAYPAL_BASE_URL}/v1/billing/subscriptions`, {
+  const response = await fetch(`${baseUrl}/v1/billing/subscriptions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -74,10 +84,12 @@ export async function createPaypalSubscription(input: CreateSubscriptionInput) {
 }
 
 export async function getPaypalSubscription(subscriptionId: string) {
+  const settings = await getResolvedLaunchSettings();
+  const baseUrl = settings.paypalEnv === "live" ? PAYPAL_LIVE_BASE_URL : PAYPAL_SANDBOX_BASE_URL;
   const accessToken = await getPayPalAccessToken();
 
   const response = await fetch(
-    `${PAYPAL_BASE_URL}/v1/billing/subscriptions/${subscriptionId}`,
+    `${baseUrl}/v1/billing/subscriptions/${subscriptionId}`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -95,9 +107,11 @@ export async function getPaypalSubscription(subscriptionId: string) {
 }
 
 export async function createPaypalOrder(input: CreateOrderInput) {
+  const settings = await getResolvedLaunchSettings();
+  const baseUrl = settings.paypalEnv === "live" ? PAYPAL_LIVE_BASE_URL : PAYPAL_SANDBOX_BASE_URL;
   const accessToken = await getPayPalAccessToken();
 
-  const response = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders`, {
+  const response = await fetch(`${baseUrl}/v2/checkout/orders`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -136,9 +150,11 @@ export async function createPaypalOrder(input: CreateOrderInput) {
 }
 
 export async function capturePaypalOrder(orderId: string) {
+  const settings = await getResolvedLaunchSettings();
+  const baseUrl = settings.paypalEnv === "live" ? PAYPAL_LIVE_BASE_URL : PAYPAL_SANDBOX_BASE_URL;
   const accessToken = await getPayPalAccessToken();
 
-  const response = await fetch(`${PAYPAL_BASE_URL}/v2/checkout/orders/${orderId}/capture`, {
+  const response = await fetch(`${baseUrl}/v2/checkout/orders/${orderId}/capture`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,

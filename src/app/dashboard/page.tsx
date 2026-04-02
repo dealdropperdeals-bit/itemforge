@@ -10,6 +10,7 @@ import { SubscribeButton } from "@/app/dashboard/subscribe-button";
 import { createDesign, logoutUser, prepareDesign, savePrintifyConnection } from "@/app/user-actions";
 import { getCreditBalance } from "@/lib/credits";
 import { prisma } from "@/lib/db";
+import { resolveEntitlements } from "@/lib/entitlements";
 import { readStorageFile } from "@/lib/storage";
 
 type Props = {
@@ -539,6 +540,8 @@ export default async function DashboardPage({ searchParams }: Props) {
   }
 
   const latestSubscription = user.subscriptions[0] || null;
+  const entitlements = resolveEntitlements(latestSubscription || null);
+  const canUsePaidFeatures = entitlements.canAccessApp;
   const query = getSingleValue(params.q)?.trim() || "";
   const view = getSingleValue(params.view) === "completed" ? "completed" : "active";
   const selectedCaseType = getSingleValue(params.caseType) || "all";
@@ -676,6 +679,12 @@ export default async function DashboardPage({ searchParams }: Props) {
                 <span className="font-medium text-white">{latestSubscription?.plan.name || "None"}</span>
               </div>
               <div className="flex items-center justify-between">
+                <span className="text-[var(--muted)]">Access</span>
+                <span className={`font-medium ${canUsePaidFeatures ? "text-emerald-200" : "text-amber-200"}`}>
+                  {canUsePaidFeatures ? "Unlocked" : "Paywall active"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
                 <span className="text-[var(--muted)]">Credits</span>
                 <span className="font-medium text-white">{creditBalance}</span>
               </div>
@@ -686,6 +695,11 @@ export default async function DashboardPage({ searchParams }: Props) {
                 </span>
               </div>
             </div>
+            {user.role === "ADMIN" ? (
+              <Link href="/admin/launch-settings" className="secondary-action w-full justify-center">
+                Launch settings
+              </Link>
+            ) : null}
           </div>
 
           <div className="mt-auto space-y-4">
@@ -789,7 +803,7 @@ export default async function DashboardPage({ searchParams }: Props) {
             </Link>
             <form action={prepareDesign}>
               <input type="hidden" name="designId" value={selectedDesign?.id || ""} />
-              <button type="submit" disabled={!selectedDesign} className="primary-action">
+              <button type="submit" disabled={!selectedDesign || !canUsePaidFeatures} className="primary-action">
                 Publish
               </button>
             </form>
@@ -834,6 +848,11 @@ export default async function DashboardPage({ searchParams }: Props) {
             </div>
           </div>
 
+          {!canUsePaidFeatures ? (
+            <div className="border-b border-amber-500/35 bg-[linear-gradient(90deg,rgba(245,158,11,0.2),rgba(15,23,42,0))] px-6 py-3 text-sm text-amber-100">
+              Paywall is active. Start a subscription below to unlock uploads, exports, AI, and Printify.
+            </div>
+          ) : null}
           {notice ? (
             <div className="border-b border-[var(--divider)] bg-[linear-gradient(90deg,rgba(56,189,248,0.12),rgba(15,23,42,0))] px-6 py-3 text-sm text-sky-100">
               {notice}
@@ -927,9 +946,16 @@ export default async function DashboardPage({ searchParams }: Props) {
                   type="text"
                   placeholder="Design title"
                   className="field-dark md:col-span-2"
+                  disabled={!canUsePaidFeatures}
                   required
                 />
-                <select name="deviceProfileId" className="field-dark" defaultValue="" required>
+                <select
+                  name="deviceProfileId"
+                  className="field-dark"
+                  defaultValue=""
+                  disabled={!canUsePaidFeatures}
+                  required
+                >
                   <option disabled value="">
                     Choose a device profile
                   </option>
@@ -944,12 +970,22 @@ export default async function DashboardPage({ searchParams }: Props) {
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   className="field-dark file:mr-4 file:rounded-full file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-[var(--foreground)] hover:file:bg-white/15"
+                  disabled={!canUsePaidFeatures}
                   required
                 />
-                <button type="submit" className="primary-action justify-center md:col-span-2">
+                <button
+                  type="submit"
+                  disabled={!canUsePaidFeatures}
+                  className="primary-action justify-center md:col-span-2"
+                >
                   Upload source artwork
                 </button>
               </form>
+              {!canUsePaidFeatures ? (
+                <p className="text-sm leading-7 text-amber-200">
+                  An active subscription is required to upload, export, and publish designs.
+                </p>
+              ) : null}
               <p className="text-sm leading-7 text-[var(--muted)]">
                 The server still generates the same curated print PNG, preview JPG, metadata JSON, and ZIP bundle. This workspace just frames that pipeline as a tighter production flow.
               </p>
@@ -986,6 +1022,11 @@ export default async function DashboardPage({ searchParams }: Props) {
                 <p className="text-[11px] uppercase tracking-[0.3em] text-[var(--muted)]">Commerce</p>
                 <h2 className="mt-2 text-lg font-semibold text-white">Plans and credit packs</h2>
               </div>
+              {!canUsePaidFeatures ? (
+                <p className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                  Subscription inactive. Start a plan to unlock uploads, exports, AI, and Printify actions.
+                </p>
+              ) : null}
               <div className="space-y-4">
                 {plans.map((plan) => (
                   <div key={plan.id} className="border-b border-[var(--divider)] pb-4 last:border-b-0 last:pb-0">
@@ -1004,6 +1045,9 @@ export default async function DashboardPage({ searchParams }: Props) {
                     />
                   </div>
                 ))}
+                {canUsePaidFeatures ? (
+                  <p className="text-xs text-emerald-200">Need more usage? Top up with credit packs below.</p>
+                ) : null}
                 {creditPacks.map((pack) => (
                   <div key={pack.id} className="border-b border-[var(--divider)] pb-4 last:border-b-0 last:pb-0">
                     <div className="mb-3 flex items-start justify-between gap-4">
@@ -1080,22 +1124,28 @@ export default async function DashboardPage({ searchParams }: Props) {
                   <p className="text-[11px] uppercase tracking-[0.3em] text-[var(--muted)]">Exports</p>
                   <form action={prepareDesign}>
                     <input type="hidden" name="designId" value={selectedDesign.id} />
-                    <button type="submit" className="secondary-action">
+                    <button type="submit" disabled={!canUsePaidFeatures} className="secondary-action">
                       Prepare exports
                     </button>
                   </form>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {selectedDesign.exports.length > 0 ? (
-                    selectedDesign.exports.map((exportItem) => (
-                      <Link
-                        key={exportItem.id}
-                        href={`/api/designs/${selectedDesign.id}/download?kind=${exportItem.kind}`}
-                        className="download-pill"
-                      >
-                        {DOWNLOAD_LABELS[exportItem.kind as ExportKind]}
-                      </Link>
-                    ))
+                    selectedDesign.exports.map((exportItem) =>
+                      canUsePaidFeatures ? (
+                        <Link
+                          key={exportItem.id}
+                          href={`/api/designs/${selectedDesign.id}/download?kind=${exportItem.kind}`}
+                          className="download-pill"
+                        >
+                          {DOWNLOAD_LABELS[exportItem.kind as ExportKind]}
+                        </Link>
+                      ) : (
+                        <span key={exportItem.id} className="download-pill opacity-60">
+                          {DOWNLOAD_LABELS[exportItem.kind as ExportKind]}
+                        </span>
+                      ),
+                    )
                   ) : (
                     <span className="text-sm text-[var(--muted)]">No exports generated yet.</span>
                   )}
@@ -1119,6 +1169,7 @@ export default async function DashboardPage({ searchParams }: Props) {
                   type="password"
                   placeholder="Printify personal access token"
                   className="field-dark"
+                  disabled={!canUsePaidFeatures}
                   required
                 />
                 <input
@@ -1127,9 +1178,14 @@ export default async function DashboardPage({ searchParams }: Props) {
                   placeholder="Printify shop ID"
                   defaultValue={user.printifyConnection?.shopId || ""}
                   className="field-dark"
+                  disabled={!canUsePaidFeatures}
                   required
                 />
-                <button type="submit" className="primary-action w-full justify-center">
+                <button
+                  type="submit"
+                  disabled={!canUsePaidFeatures}
+                  className="primary-action w-full justify-center"
+                >
                   Save and validate Printify
                 </button>
               </form>

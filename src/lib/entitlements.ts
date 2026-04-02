@@ -17,7 +17,7 @@ export function resolveEntitlements(subscription?: SubscriptionWithPlan | null) 
 
   return {
     canAccessApp: true,
-    canUseAi: true,
+    canUseAi: subscription.plan.aiEnabled,
     includedCredits: subscription.plan.includedCredits,
   };
 }

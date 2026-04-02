@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { addCreditLedgerEntry } from "@/lib/credits";
 import { prisma } from "@/lib/db";
 import { getPaypalSubscription } from "@/lib/paypal";
+import { getResolvedLaunchSettings } from "@/lib/runtime-settings";
 
 function mapPaypalStatus(status?: string): SubscriptionStatus {
   switch (status) {
@@ -23,6 +24,11 @@ function mapPaypalStatus(status?: string): SubscriptionStatus {
 }
 
 export async function POST(request: Request) {
+  const settings = await getResolvedLaunchSettings();
+  if (!settings.paypalWebhookId) {
+    return NextResponse.json({ received: true, reconciled: false, reason: "Webhook ID not configured" });
+  }
+
   const payload = await request.json();
 
   const event = await prisma.webhookEvent.create({

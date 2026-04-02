@@ -354,3 +354,11 @@ model WebhookEvent {
 
   @@index([provider, eventType])
 }
+
+model RuntimeSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  valueJson Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

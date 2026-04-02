@@ -1,13 +1,15 @@
 import OpenAI from "openai";
 
-import { env } from "@/lib/env";
+import { getResolvedLaunchSettings } from "@/lib/runtime-settings";
 
-export function getOpenAiClient() {
-  if (!env.openAiApiKey) {
+export async function getOpenAiClient() {
+  const settings = await getResolvedLaunchSettings();
+
+  if (!settings.openAiApiKey) {
     throw new Error("OPENAI_API_KEY is not configured.");
   }
 
   return new OpenAI({
-    apiKey: env.openAiApiKey,
+    apiKey: settings.openAiApiKey,
   });
 }
