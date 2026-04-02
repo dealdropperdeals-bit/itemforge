@@ -121,7 +121,8 @@ App-global catalog strategy:
 - Maintain a curated allowlist JSON for Amazon-candidate items
 - Run one daily sync using a service token in `PRINTIFY_SYNC_API_TOKEN`
 - Refresh blueprint and variant cost data
-- Upsert into `DeviceProfile`
+- Upsert into `DeviceProfile` with sourcing metadata (manufacturer, case model, phone model)
+- Compute marketplace pricing per channel (Amazon, Etsy, eBay) from synced cost + margin targets
 
 ## Pricing and Margin Logic
 

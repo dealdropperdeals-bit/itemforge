@@ -90,6 +90,14 @@ function formatCurrency(cents?: number | null) {
   }).format(cents / 100);
 }
 
+function formatPercent(value?: number | null) {
+  if (typeof value !== "number") {
+    return "N/A";
+  }
+
+  return `${value.toFixed(1)}%`;
+}
+
 function formatShortDate(date: Date) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -149,6 +157,60 @@ function getCaseFamily(input: { title: string; parametersJson: Prisma.JsonValue 
   }
 
   return "standard-case";
+}
+
+function getDeviceParameter(design: DesignRecord, key: string) {
+  const payload = design.deviceProfile.parametersJson;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return "";
+  }
+
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : "";
+}
+
+function getChannelPricing(design: DesignRecord, channel: "amazon" | "etsy" | "ebay") {
+  const payload = design.deviceProfile.parametersJson;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const pricingPayload = (payload as Record<string, unknown>).channelPricing;
+  if (!pricingPayload || typeof pricingPayload !== "object" || Array.isArray(pricingPayload)) {
+    return null;
+  }
+
+  const channelPayload = (pricingPayload as Record<string, unknown>)[channel];
+  if (!channelPayload || typeof channelPayload !== "object" || Array.isArray(channelPayload)) {
+    return null;
+  }
+
+  const typed = channelPayload as Record<string, unknown>;
+  const priceCents = typeof typed.priceCents === "number" ? typed.priceCents : null;
+  const feesCents = typeof typed.feesCents === "number" ? typed.feesCents : null;
+  const profitCents = typeof typed.profitCents === "number" ? typed.profitCents : null;
+  const marginPct = typeof typed.marginPct === "number" ? typed.marginPct : null;
+
+  if (priceCents === null || feesCents === null || profitCents === null || marginPct === null) {
+    return null;
+  }
+
+  return {
+    priceCents,
+    feesCents,
+    profitCents,
+    marginPct,
+  };
+}
+
+function getSourcingMeta(design: DesignRecord) {
+  return {
+    manufacturer: getDeviceParameter(design, "manufacturer") || "Unknown",
+    caseModel: getDeviceParameter(design, "caseModel") || slugToLabel(getCaseFamily(design.deviceProfile)),
+    phoneModel: getDeviceParameter(design, "phoneModel") || design.deviceProfile.title,
+    blueprintTitle: getDeviceParameter(design, "blueprintTitle") || "Unknown blueprint",
+    printProviderTitle: getDeviceParameter(design, "printProviderTitle") || "Unknown provider",
+  };
 }
 
 function getWorkflowState(design: DesignRecord) {
@@ -1149,6 +1211,89 @@ export default async function DashboardPage({ searchParams }: Props) {
                   ) : (
                     <span className="text-sm text-[var(--muted)]">No exports generated yet.</span>
                   )}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedDesign ? (
+              <div className="space-y-4 border-t border-[var(--divider)] pt-5">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-[var(--muted)]">Sourcing</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {(() => {
+                    const sourcing = getSourcingMeta(selectedDesign);
+                    return (
+                      <>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Manufacturer</p>
+                          <p className="mt-1 text-slate-100">{slugToLabel(sourcing.manufacturer)}</p>
+                        </div>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Case model</p>
+                          <p className="mt-1 text-slate-100">{slugToLabel(sourcing.caseModel)}</p>
+                        </div>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Phone model</p>
+                          <p className="mt-1 text-slate-100">{slugToLabel(sourcing.phoneModel)}</p>
+                        </div>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Base cost</p>
+                          <p className="mt-1 text-slate-100">{formatCurrency(selectedDesign.deviceProfile.baseCostCents)}</p>
+                        </div>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Blueprint</p>
+                          <p className="mt-1 text-slate-100">{sourcing.blueprintTitle}</p>
+                        </div>
+                        <div className="rounded-xl bg-[rgba(255,255,255,0.03)] px-3 py-2">
+                          <p className="text-xs text-[var(--muted)]">Print provider</p>
+                          <p className="mt-1 text-slate-100">{sourcing.printProviderTitle}</p>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedDesign ? (
+              <div className="space-y-4 border-t border-[var(--divider)] pt-5">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-[var(--muted)]">Marketplace pricing</p>
+                <div className="space-y-2">
+                  {(["amazon", "etsy", "ebay"] as const).map((channel) => {
+                    const channelPricing = getChannelPricing(selectedDesign, channel);
+                    return (
+                      <div
+                        key={channel}
+                        className="rounded-xl border border-[var(--divider)] bg-[rgba(255,255,255,0.02)] px-3 py-3 text-sm"
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="font-medium text-slate-100">{slugToLabel(channel)}</p>
+                          <p className="text-slate-200">
+                            {channelPricing ? formatCurrency(channelPricing.priceCents) : "N/A"}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-xs text-[var(--muted)]">
+                          <div>
+                            <p>Fees</p>
+                            <p className="mt-1 text-slate-200">
+                              {channelPricing ? formatCurrency(channelPricing.feesCents) : "N/A"}
+                            </p>
+                          </div>
+                          <div>
+                            <p>Profit</p>
+                            <p className="mt-1 text-slate-200">
+                              {channelPricing ? formatCurrency(channelPricing.profitCents) : "N/A"}
+                            </p>
+                          </div>
+                          <div>
+                            <p>Margin</p>
+                            <p className="mt-1 text-slate-200">
+                              {channelPricing ? formatPercent(channelPricing.marginPct) : "N/A"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ) : null}
